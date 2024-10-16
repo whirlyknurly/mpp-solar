@@ -106,21 +106,10 @@ class JkBleIO(BaseIO):
         if command == b"getInfo":
             return self.record[:300]
 
-        log.info(
-            "Write command to read handle",
-            self._device.writeCharacteristic(handleRead, command),
-        )
-        loops = 0
-        recordsToGrab = 1
-        log.info("Grabbing {} records (after inital response)".format(recordsToGrab))
+        log.info("Write command %s to read handle" % command, notification_char.write(command))
 
-        while True:
-            loops += 1
-            if loops > recordsToGrab * 15 + 16:
-                log.info("jkbleio: ble_get_dataa: Got {} records".format(recordsToGrab))
-                break
-            if self._device.waitForNotifications(1.0):
-                continue
+        for x in range(16):
+            self._device.waitForNotifications(1.0)
 
         log.debug(f"Record now {self.record} len {len(self.record)}")
         return self.record[:300]
