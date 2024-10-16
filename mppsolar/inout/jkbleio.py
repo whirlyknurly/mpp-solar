@@ -14,8 +14,11 @@ from .jkbledelegate import jkBleDelegate
 
 log = logging.getLogger("JkBleIO")
 
+BLE_MTU = 330
+
 getInfo = (
-    b"\xaa\x55\x90\xeb\x97\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x11"
+        b"\xaa\x55\x90\xeb\x97\x00\x34\x2b\x08\xe6\xd2\x4e\x5e\x66\x65\x90\x11\x01\xa2\xeb",
+        b"\xaa\x55\x90\xeb\x97\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x11",
 )
 # getInfo = b"\xaa\x55\x90\xeb\x97\x00\xdf\x52\x88\x67\x9d\x0a\x09\x6b\x9a\xf6\x70\x9a\x17\xfd"
 
@@ -53,28 +56,20 @@ class JkBleIO(BaseIO):
         """
         Connect to a BLE device with 'mac' address
         """
-        self._device = None
-        # Intialise BLE device
-        self._device = btle.Peripheral(None)
+        self._device = btle.Peripheral()
         self._device.withDelegate(jkBleDelegate(self, protocol, record_type))
-        # Connect to BLE Device
-        connected = False
-        attempts = 0
         log.info(f"Attempting to connect to {mac}")
-        while not connected:
-            attempts += 1
-            if attempts > self.maxConnectionAttempts:
-                log.warning(
-                    f"Cannot connect to mac {mac} - exceeded {attempts - 1} attempts"
-                )
-                return connected
+        for attempt in range(self.maxConnectionAttempts):
             try:
                 self._device.connect(mac)
-                self._device.setMTU(330)
-                connected = True
-            except Exception:
+                self._device.setMTU(BLE_MTU)
+                return True
+            except Exception as e:
+                log.debug("Connection exception: %s" % e)
                 continue
-        return connected
+        else:
+            log.warning(f"Cannot connect to mac {mac} - exceeded {self.maxConnectionAttempts} attempts")
+            return False
 
     def ble_disconnect(self):
         log.info("Disconnecting BLE Device...")
