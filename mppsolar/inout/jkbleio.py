@@ -15,6 +15,8 @@ from .jkbledelegate import jkBleDelegate
 log = logging.getLogger("JkBleIO")
 
 BLE_MTU = 330
+JK_SERVICE_UUID = "ffe0"
+READ_CHARACTERISTIC_UUID = "ffe1" 
 
 getInfo = (
         b"\xaa\x55\x90\xeb\x97\x00\x34\x2b\x08\xe6\xd2\x4e\x5e\x66\x65\x90\x11\x01\xa2\xeb",
@@ -85,54 +87,23 @@ class JkBleIO(BaseIO):
         if command is None:
             return self.record
 
-        # Get the device name
-        try:
-            serviceId = self._device.getServiceByUUID(btle.AssignedNumbers.genericAccess)
-            deviceName = serviceId.getCharacteristics(btle.AssignedNumbers.deviceName)[0]
-            log.info("Connected to {}".format(deviceName.read()))
-        except btle.BTLEGattError as e:
-            log.warning(f"Error getting device name: {e}")
-
         # Connect to the notify service
-        serviceNotifyUuid = "ffe0"
-        serviceNotify = self._device.getServiceByUUID(serviceNotifyUuid)
+        notification_service = self._device.getServiceByUUID(JK_SERVICE_UUID)
+        notification_char = [n for n in notification_service.getCharacteristics() if n.properties & n.props['NOTIFY']][0]
+        log.info("Notification characteristic: {}, handle {:x}".format(notification_char, notification_char.getHandle()))
+        client_config_desc = notification_service.getDescriptors(btle.AssignedNumbers.clientCharacteristicConfiguration)[0]
+        log.info("Client Config Descriptor: {}, handle {:x}".format(client_config_desc, client_config_desc.handle))
 
-        # Get the handles that we need to talk to
-        # Read
-        # characteristicReadUuid = "ffe3"  #old version
-        characteristicReadUuid = (
-            "ffe1"  # TODO: need to validate this works for older bms
-        )
-        characteristicRead = serviceNotify.getCharacteristics(characteristicReadUuid)[0]
-        handleRead = characteristicRead.getHandle()
-        log.info(
-            "Read characteristic: {}, handle {:x}".format(
-                characteristicRead, handleRead
-            )
-        )
+        log.info("Enable Client Characteristic Configuration handle")
+        client_config_desc.write(b"\x01\x00", True)
+        log.info("Enable read handle")
+        notification_char.write(b"\x01\x00")
+        log.info("Write getInfo to read handle")
+        notification_char.write(getInfo[1])
 
-        # ## TODO sort below
-        # Need to dynamically find this handle....
-        log.info(
-            "Enable 0x0b handle %s", self._device.writeCharacteristic(0x0B, b"\x01\x00")
-        )
-        log.info(
-            "Enable read handle %s",
-            self._device.writeCharacteristic(handleRead, b"\x01\x00")
-        )
-        log.info(
-            "Write getInfo to read handle %s",
-            self._device.writeCharacteristic(handleRead, getInfo)
-        )
-        secs = 0
-        while True:
-            if self._device.waitForNotifications(1.0):
-                continue
-            secs += 1
-            if secs > 5:
-                break
+        self._device.waitForNotifications(1.0)
 
-        if command == "getInfo":
+        if command == b"getInfo":
             return self.record[:300]
 
         log.info(
